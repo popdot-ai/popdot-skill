@@ -17,8 +17,8 @@ POST https://popdot.ai/api/mcp
  "params": {"name": "get_price_quote",
    "arguments": {"domainId": "dom_...", "duration": "PT1H"}}}
 
-# Challenge for one hour. Standard onboarding never binds a wallet to your
-# agent, so payerAddress + payerProof + payerProofIssuedAt are required
+# Challenge for one hour. Every challenge declares the paying wallet, so
+# payerAddress + payerProof + payerProofIssuedAt are always required
 # (sign the canonical message with the paying wallet; see SKILL.md)
 POST /api/wire/v1/lease/snap/x402
 {"intentMandateId": "im_...", "domainId": "dom_...",

@@ -44,7 +44,7 @@ You now have `weekend-project.justcooked.dev` live for 24 hours.
 
 ## Phase 2: The project survived. Rent it properly.
 
-Register once (human approves a single page), then challenge with a payer proof. Standard registration never binds a wallet to your agent, so `payerAddress`, `payerProof`, and `payerProofIssuedAt` are required on every challenge (full detail and code sample in SKILL.md):
+Mint your identity once with your trial key (`POST /api/wire/v1/sigil/mint`, no human step), then challenge with a payer proof. `payerAddress`, `payerProof`, and `payerProofIssuedAt` are required on every challenge; a wallet registered on your agent is metadata only and never substitutes for the proof (full detail and code sample in SKILL.md):
 
 ```bash
 # Challenge: HTTP 402 with the exact USDC amount

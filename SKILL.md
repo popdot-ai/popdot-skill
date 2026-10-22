@@ -1,6 +1,6 @@
 ---
 name: popdot-domains
-description: Rent verified subdomains by the hour, day, or month. Built for AI agents: free 24h trials, x402 USDC payments on Base, no account to discover. Use when an agent needs a web address: a verifiable web identity, a temporary deployment address, a short-lived landing page, or a persistent web presence it controls.
+description: Rent subdomains by the hour, day, or month. An AI agent gets a free 24h trial with no signup, mints its own identity, and pays per rental with x402 USDC on Base. Use when an agent needs a web address: a verifiable web identity, a temporary deployment address, a short-lived landing page, or a persistent web presence it controls.
 ---
 
 # Popdot AI: Web Addresses for Agents
@@ -75,20 +75,20 @@ curl -X POST https://popdot.ai/api/wire/v1/domains/trial \
 
 ### Paid rental (x402, USDC on Base)
 
-Requires a registered agent (one-time human approval):
+Requires an agent identity, which you mint yourself. No human approval:
 
 ```bash
-# Registration: returns a one-page approval URL for your human sponsor
-curl -X POST https://popdot.ai/api/wire/v1/onboard/request \
-  -H 'Content-Type: application/json' \
-  -d '{"agentName": "my-weekend-agent"}'
-# Poll GET /api/wire/v1/onboard/<token>/status every 5s until COMPLETE
-# -> credentials: sigilId, privateKey, mandateId
+# Mint a Sigil with the trial key you already hold
+curl -X POST https://popdot.ai/api/wire/v1/sigil/mint \
+  -H 'X-API-Key: <key>'
+# -> sigilId + an Ed25519 keypair. The private key is shown once; store it.
 ```
 
-All paid calls use Ed25519 signature auth: headers `X-Popdot-Sigil-Id`, `X-Popdot-Timestamp` (unix seconds), `X-Popdot-Signature` (base64 Ed25519 over `timestamp\nMETHOD\n/path\nsha256hex(body)`).
+This claims the identity your trial already created, so the `sigilId` stays the same. It works until 30 days after the trial ends.
 
-The standard onboarding flow above never registers a payment wallet on your agent, so every challenge must declare one and prove control of it. Sign the canonical four-line message with the wallet that will send the USDC (the same wallet must both sign and pay):
+All paid calls use Ed25519 signature auth: headers `X-Popdot-Sigil-Id`, `X-Popdot-Timestamp` (unix seconds), `X-Popdot-Signature` (base64 Ed25519 over `timestamp\nMETHOD\n/path\nsha256hex(body)`, where body is the exact bytes sent, including binary multipart uploads). The timestamp must be within 300 seconds in the past and no more than 60 seconds ahead of server time. Each signed request is single use: sign every attempt, retries included, with a new timestamp. A resent signature is refused with 401.
+
+Every challenge must declare the wallet that will pay and prove control of it. A wallet you supplied at registration is metadata only: it is never used as the payer and never skips the proof. Sign the canonical four-line message with the wallet that will send the USDC (the same wallet must both sign and pay):
 
 ```js
 // viem
@@ -139,10 +139,10 @@ POST https://popdot.ai/api/wire/drop/files
 | Code | Meaning | Action |
 |------|---------|--------|
 | SUBDOMAIN_TAKEN (409) | Another renter got it | Pick a different subdomain |
-| CONCURRENT_CONFLICT (409) | Transient serialization conflict | Retry the same request; it is safe |
+| CONCURRENT_CONFLICT (409) | Transient serialization conflict | Retry the same request, signed again with a new timestamp; it is safe |
 | SUBDOMAIN_COOLDOWN (409) | 72h cooldown on a recently rented name | Pick a different name |
-| PAYMENT_NOT_VERIFIED (402) | Tx not confirmed on Base yet | Wait a few seconds, retry settle with the same body |
-| PAYER_REQUIRED (400) | No payerAddress and no wallet registered on the agent | Pass payerAddress (with payerProof) on the challenge |
+| PAYMENT_NOT_VERIFIED (402) | Tx not confirmed on Base yet | Wait a few seconds, retry settle with the same body, signed again |
+| PAYER_REQUIRED (400) | No payerAddress declared on the challenge | Pass payerAddress (with payerProof) on the challenge |
 | PAYER_PROOF_REQUIRED (400) | payerAddress declared without payerProof / payerProofIssuedAt | Sign the canonical message and include both fields |
 | PAYER_PROOF_INVALID (403) | Signature did not verify, or issuedAt is outside the 5-minute window | Re-sign with a fresh issuedAt and retry |
 | PENDING_LIMIT_EXCEEDED (429) | Agent already has 5 unpaid reservations in flight | Pay or let one expire, then retry |
@@ -150,7 +150,7 @@ POST https://popdot.ai/api/wire/drop/files
 
 A challenge response with HTTP 202 and `data.status: "pending_human_approval"` is not an error: it means the reservation is held pending review by your human sponsor. Wait, then re-request the identical `POST /api/wire/v1/lease/snap/x402` body; once approved it returns a fresh 402 payment challenge instead of stepping up again.
 
-Only CONCURRENT_CONFLICT and PAYMENT_NOT_VERIFIED are designed to be retried unchanged.
+Only CONCURRENT_CONFLICT and PAYMENT_NOT_VERIFIED are designed to be retried with an unchanged body. Every retry still needs a fresh signature.
 
 ## Content rules (read before deploying)
 
@@ -158,4 +158,4 @@ All deployed content is scanned before going live. Phishing, brand impersonation
 
 ## MCP alternative
 
-`search_domains`, `get_price_quote`, and `check_availability` are read-only MCP tools, no auth required. `try_domain` is also unauthenticated but does not provision anything itself: it returns the step-by-step REST sequence for the free trial above (the screening interview is interactive, so it runs over REST). `rent_domain` is authenticated and initiates a paid rental: it validates the request and returns the HTTP 402 challenge/settle REST sequence rather than completing payment itself, since payment happens on-chain between those two calls. Connect any MCP client to `https://popdot.ai/api/mcp`, or run `npx popdot-mcp` for stdio.
+MCP is the shortest path, and it needs no human at any step. `try_domain` opens a free 24 hour trial anonymously and returns a `trialHandle` plus the safety questions; `answer_trial_canary` completes it and hands back a live URL and a one-time `claimToken`; `upgrade_trial` claims the agent identity the trial created (a Nascent Sigil whose `sigilId` came back with the token) by proving you hold your Ed25519 key: send `claimToken`, `sigilId`, `publicKey`, a Unix `timestamp` and a `signature` by your key over `popdot-claim/1\n{timestamp}\n{sigilId}\n{sha256 hex of claimToken}\n{publicKey}`. The token works until 30 days after the trial ends. With a wallet it also returns the x402 challenge that keeps the exact URL live; `rent_domain` drives the challenge and settlement for any rental. `search_domains`, `get_price_quote`, and `check_availability` are read-only and need no auth either. Only `rent_domain` requires Sigil auth. On the 2026-07-28 transport, `try_domain` absorbs `answer_trial_canary`: the first call returns `resultType: "input_required"`, and you retry it with `inputResponses` plus the echoed `trialHandle`. Connect any MCP client to `https://popdot.ai/api/mcp`, or run `npx popdot-mcp` for stdio.

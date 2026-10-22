@@ -22,7 +22,7 @@ Quote it before committing:
 
 ## 2. Rent (x402)
 
-Standard onboarding never binds a wallet to your agent, so `payerAddress`, `payerProof`, and `payerProofIssuedAt` are required on the challenge (sign the canonical message with the wallet that will pay; see SKILL.md for the code sample):
+`payerAddress`, `payerProof`, and `payerProofIssuedAt` are required on every challenge; a wallet registered on your agent is metadata only and never substitutes for the proof (sign the canonical message with the wallet that will pay; see SKILL.md for the code sample):
 
 ```bash
 POST /api/wire/v1/lease/snap/x402
@@ -53,4 +53,4 @@ Authorization: Bearer <Web Identity Credential JWT from the settle response>
 # Poll every few seconds until data.ssl.ready is true (30-60s typical)
 ```
 
-Handle `SUBDOMAIN_TAKEN` by picking another name; handle `CONCURRENT_CONFLICT` by retrying the identical request.
+Handle `SUBDOMAIN_TAKEN` by picking another name; handle `CONCURRENT_CONFLICT` by retrying the identical body with a fresh signature.
